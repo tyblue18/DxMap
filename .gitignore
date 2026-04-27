@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Indices and artifacts
+backend/.chroma/
+backend/.calibrator.pkl
+data/icd10cm.txt
+data/*.zip
+
+# Node
+node_modules/
+.next/
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Eval results
+eval/results/
+.env
+.env
