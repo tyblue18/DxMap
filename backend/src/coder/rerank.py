@@ -224,8 +224,18 @@ def rerank(
     if os.getenv("SKIP_RERANK", "false").lower() == "true":
         return _retrieval_passthrough(candidates, code_system)
 
-    shown = candidates[:5]
+    print(
+        f"[rerank] {code_system} — {len(candidates)} candidates received: "
+        + ", ".join(f"{c.code}({c.retrieval_score:.4f})" for c in candidates)
+    )
+
+    shown = candidates[:10]
     code_to_desc = {c.code: c.description for c in shown}
+
+    print(
+        f"[rerank] {code_system} — {len(shown)} shown to LLM: "
+        + ", ".join(f"{c.code}: {c.description}" for c in shown)
+    )
 
     user_msg = USER_TEMPLATE.format(
         note=note,
@@ -234,6 +244,7 @@ def rerank(
 
     try:
         response = _call_llm(RERANK_SYSTEM_PROMPT, user_msg)
+        print(f"[rerank] {code_system} — raw LLM response: {response}")
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "_call_llm failed (provider=%s): %s\n%s",

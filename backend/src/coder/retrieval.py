@@ -50,14 +50,45 @@ _NUMERIC_RE = re.compile(
     re.I,
 )
 
+# Exact-match terms that produce only noise when used as standalone queries.
+# "follow-up" is the critical one: it surfaces Z encounter codes (Z39.2, Z08,
+# Z36.2) at rank #1 which then dominate the merged candidate set.
+_ADMIN_BLOCKLIST = frozenset({
+    "follow-up", "follow up", "type",
+})
+
+# Tokens that carry no clinical coding signal on their own.
+_NONCLINICAL_TOKENS = frozenset({
+    "male", "female", "man", "woman", "patient", "presents",
+    "year", "old", "aged", "today", "currently", "now",
+})
+
+# Common drug name suffixes — single-word queries ending in these are
+# medication names with no direct ICD-10 code and produce junk BM25 results.
+_DRUG_SUFFIXES = (
+    "olol", "pril", "sartan", "statin", "flozin",
+    "gliptin", "tidine", "azole", "mycin", "cillin", "cycline", "mab",
+)
+
 
 def _is_useful_query(text: str) -> bool:
-    """Return False for strings that are pure numbers, dosages, or short noise."""
+    """Return False for strings that produce only noise as retrieval queries."""
     if len(text) < 4:
         return False
-    for token in text.split():
-        if not _NUMERIC_RE.match(token):
-            return True  # at least one non-numeric/non-unit token
+    lower = text.lower().strip()
+    if lower in _ADMIN_BLOCKLIST:
+        return False
+    tokens = text.split()
+    # Single-token lab abbreviations: "HbA1c", "eGFR" — letters + digit + letters
+    if len(tokens) == 1 and re.match(r"^[A-Za-z]+\d[A-Za-z\d]*$", tokens[0]):
+        return False
+    # Single-token medication names
+    if len(tokens) == 1 and any(lower.endswith(s) for s in _DRUG_SUFFIXES):
+        return False
+    # Demographic / temporal phrases: all tokens are numeric, units, or non-clinical
+    for token in tokens:
+        if not _NUMERIC_RE.match(token) and token.lower() not in _NONCLINICAL_TOKENS:
+            return True
     return False
 
 
