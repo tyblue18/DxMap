@@ -1,0 +1,6 @@
+{
+  "env": {
+    "TRANSFORMERS_OFFLINE": "1",
+    "SKIP_RERANK": "false"
+  }
+}

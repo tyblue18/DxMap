@@ -12,7 +12,7 @@ import time
 from .calibration import calibrate, load_calibrator
 from .negation import find_negated_spans
 from .rerank import rerank
-from .retrieval import retrieve
+from .retrieval import retrieve_decomposed
 from .schema import CodingRequest, CodingResponse, CodeSuggestion
 
 
@@ -23,14 +23,14 @@ def run(request: CodingRequest) -> CodingResponse:
     negated = find_negated_spans(request.note)
 
     # Stage 2 + 3: hybrid retrieval, then LLM rerank with span attribution.
-    icd_candidates = retrieve(request.note, code_system="ICD-10-CM")
+    icd_candidates = retrieve_decomposed(request.note, code_system="ICD-10-CM")
     icd_suggestions = rerank(
         request.note, icd_candidates, negated, code_system="ICD-10-CM"
     )
 
     cpt_suggestions: list[CodeSuggestion] = []
     if request.include_cpt:
-        cpt_candidates = retrieve(request.note, code_system="CPT")
+        cpt_candidates = retrieve_decomposed(request.note, code_system="CPT")
         cpt_suggestions = rerank(
             request.note, cpt_candidates, negated, code_system="CPT"
         )

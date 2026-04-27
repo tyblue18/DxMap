@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any
 
 from .negation import is_span_negated
@@ -94,19 +95,31 @@ def _call_anthropic(system: str, user: str) -> dict[str, Any]:
 
 
 def _call_gemini(system: str, user: str) -> dict[str, Any]:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
 
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    model = genai.GenerativeModel(
-        model_name=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    config = types.GenerateContentConfig(
         system_instruction=system,
-        generation_config=genai.GenerationConfig(
-            response_mime_type="application/json",
-            temperature=0.0,
-        ),
+        response_mime_type="application/json",
+        temperature=0.0,
     )
-    resp = model.generate_content(user)
-    return json.loads(resp.text)
+
+    retry_delays = [5, 15, 30]
+    last_exc: Exception
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            resp = client.models.generate_content(
+                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+                contents=user,
+                config=config,
+            )
+            return json.loads(resp.text)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < len(retry_delays):
+                time.sleep(retry_delays[attempt])
+    raise last_exc
 
 
 def _call_llm(system: str, user: str) -> dict[str, Any]:
@@ -123,6 +136,27 @@ def _call_llm(system: str, user: str) -> dict[str, Any]:
 # ---------- Main reranker ----------
 
 
+def _retrieval_passthrough(
+    candidates: list[CodeCandidate],
+    code_system: str,
+) -> list[CodeSuggestion]:
+    """Return candidates as-is using their raw retrieval score as confidence."""
+    return [
+        CodeSuggestion(
+            code=c.code,
+            description=c.description,
+            code_system=c.code_system,
+            rank=i + 1,
+            raw_confidence=c.retrieval_score,
+            calibrated_confidence=c.retrieval_score,
+            justification_spans=[],
+            rationale="",
+            needs_human_review=True,
+        )
+        for i, c in enumerate(candidates[:5])
+    ]
+
+
 def rerank(
     note: str,
     candidates: list[CodeCandidate],
@@ -133,11 +167,14 @@ def rerank(
     if not candidates:
         return []
 
+    if os.getenv("SKIP_RERANK", "false").lower() == "true":
+        return _retrieval_passthrough(candidates, code_system)
+
     code_to_desc = {c.code: c.description for c in candidates}
 
     user_msg = USER_TEMPLATE.format(
         note=note,
-        candidates=_format_candidates(candidates),
+        candidates=_format_candidates(candidates[:5]),
     )
 
     try:

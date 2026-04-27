@@ -64,7 +64,7 @@ export default function Page() {
         <div className="mx-auto max-w-6xl px-6 py-5 flex items-baseline justify-between">
           <div>
             <h1 className="font-serif text-2xl text-ink tracking-tight">
-              Clinical Coder
+              DxMap
             </h1>
             <p className="text-xs text-ink-muted mt-0.5 font-mono">
               ICD-10-CM &middot; CPT &middot; Span attribution &middot; Calibrated confidence

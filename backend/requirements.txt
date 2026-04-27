@@ -16,7 +16,7 @@ negspacy>=1.0.4
 # LLM clients (use whichever you have a key for)
 openai>=1.12.0
 anthropic>=0.18.0
-google-generativeai>=0.8.0
+google-genai>=0.8.0
 
 # Calibration / metrics
 scikit-learn>=1.4.0

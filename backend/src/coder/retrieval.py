@@ -23,6 +23,7 @@ medcpt-query/article from NCBI which is medical-domain-specific.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -34,6 +35,54 @@ from .schema import CodeCandidate
 
 _CHROMA_DIR = Path(__file__).resolve().parents[2] / ".chroma"
 _BM25_CACHE: dict[str, tuple[BM25Okapi, list[dict]]] = {}
+
+
+@lru_cache(maxsize=1)
+def _get_spacy_nlp():
+    import spacy
+    return spacy.load("en_core_web_sm")
+
+
+_NUMERIC_RE = re.compile(
+    r"^[\d\s./:,]+"          # pure numbers / fractions / dates
+    r"|^\d+\s*(?:mg|ml|mcg|g|kg|mmhg|mmol|units?|tabs?)$"  # doses/units
+    r"|^(?:bid|tid|qid|qd|prn|po|iv|im|sc|sq|hs|ac|pc|stat)$",  # sig abbreviations
+    re.I,
+)
+
+
+def _is_useful_query(text: str) -> bool:
+    """Return False for strings that are pure numbers, dosages, or short noise."""
+    if len(text) < 4:
+        return False
+    for token in text.split():
+        if not _NUMERIC_RE.match(token):
+            return True  # at least one non-numeric/non-unit token
+    return False
+
+
+def _extract_query_entities(note: str) -> list[str]:
+    """Return per-entity query strings extracted from note via spaCy NER and noun chunks.
+
+    Running one retrieve() call per entity prevents a dominant condition from
+    monopolising the top-k slots in both BM25 and the embedding space.
+    Pure numbers, dosages, and sig abbreviations are filtered out because they
+    produce spurious high-scoring matches against NIHSS score codes, BMI codes, etc.
+    """
+    doc = _get_spacy_nlp()(note)
+    seen: set[str] = set()
+    queries: list[str] = []
+    for ent in doc.ents:
+        t = ent.text.strip()
+        if _is_useful_query(t) and t.lower() not in seen:
+            seen.add(t.lower())
+            queries.append(t)
+    for chunk in doc.noun_chunks:
+        t = chunk.text.strip()
+        if _is_useful_query(t) and t.lower() not in seen:
+            seen.add(t.lower())
+            queries.append(t)
+    return queries
 
 
 def _tokenize(s: str) -> list[str]:
@@ -135,3 +184,30 @@ def retrieve(
         )
         for code, score in fused
     ]
+
+
+def retrieve_decomposed(
+    note: str,
+    code_system: str = "ICD-10-CM",
+    top_k_bm25: int = 30,
+    top_k_dense: int = 30,
+    final_k: int = 20,
+) -> list[CodeCandidate]:
+    """Hybrid retrieval with per-entity query decomposition.
+
+    Runs retrieve() for the full note and for each clinical entity/noun chunk
+    extracted by spaCy. Candidate sets are unioned by taking the max RRF score
+    per code across all queries, then trimmed to final_k. This ensures secondary
+    conditions (e.g. hypertension) are not crowded out by dominant ones
+    (e.g. type 2 diabetes mellitus) in either BM25 or the embedding space.
+    """
+    queries = [note] + _extract_query_entities(note)
+
+    merged: dict[str, CodeCandidate] = {}
+    for query in queries:
+        for candidate in retrieve(query, code_system, top_k_bm25, top_k_dense, final_k):
+            existing = merged.get(candidate.code)
+            if existing is None or candidate.retrieval_score > existing.retrieval_score:
+                merged[candidate.code] = candidate
+
+    return sorted(merged.values(), key=lambda c: c.retrieval_score, reverse=True)[:final_k]
