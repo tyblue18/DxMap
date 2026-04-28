@@ -29,3 +29,6 @@ out/
 eval/results/
 .env
 .env
+
+# Claude rules
+.claude/
