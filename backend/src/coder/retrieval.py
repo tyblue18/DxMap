@@ -70,6 +70,39 @@ _DRUG_SUFFIXES = (
     "gliptin", "tidine", "azole", "mycin", "cillin", "cycline", "mab",
 )
 
+# Medical abbreviations that the BM25 corpus does not contain (it indexes the
+# full ICD descriptions). Expanding them before spaCy NLP ensures the NER and
+# noun-chunk extractor produce useful query strings.
+#
+# "post-MI" is the canonical failure case: the hyphen causes spaCy to emit
+# the token "MI" which is then dropped by the len < 4 guard, so I25.2
+# (Old myocardial infarction) never enters the candidate set. After expansion,
+# spaCy sees "post-myocardial infarction" and extracts "myocardial infarction"
+# as a noun chunk.
+#
+# "EF 45%" is the second failure case: "EF" is 2 chars (dropped) and "45%"
+# is filtered as numeric, so echocardiogram-derived heart failure diagnoses
+# are invisible to retrieval. Expanding EF → "ejection fraction" lets spaCy
+# emit the chunk and BM25 match I50.2x/I50.3x descriptions.
+_ABBR_EXPANSIONS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bMI\b"),   "myocardial infarction"),
+    (re.compile(r"\bHF\b"),   "heart failure"),
+    (re.compile(r"\bEF\b"),   "ejection fraction"),
+    (re.compile(r"\bHTN\b"),  "hypertension"),
+    (re.compile(r"\bCAD\b"),  "coronary artery disease"),
+    (re.compile(r"\bCKD\b"),  "chronic kidney disease"),
+    (re.compile(r"\bDVT\b"),  "deep vein thrombosis"),
+    (re.compile(r"\bT2DM\b"), "type 2 diabetes mellitus"),
+    (re.compile(r"\bAFib\b"), "atrial fibrillation"),
+    (re.compile(r"\bAfib\b"), "atrial fibrillation"),
+]
+
+
+def _expand_abbreviations(text: str) -> str:
+    for pattern, replacement in _ABBR_EXPANSIONS:
+        text = pattern.sub(replacement, text)
+    return text
+
 
 def _is_useful_query(text: str) -> bool:
     """Return False for strings that produce only noise as retrieval queries."""
@@ -99,8 +132,12 @@ def _extract_query_entities(note: str) -> list[str]:
     monopolising the top-k slots in both BM25 and the embedding space.
     Pure numbers, dosages, and sig abbreviations are filtered out because they
     produce spurious high-scoring matches against NIHSS score codes, BMI codes, etc.
+
+    The note is abbreviation-expanded before NLP so that tokens like "MI" and
+    "EF" (dropped by the len < 4 guard or the numeric filter) become full
+    clinical terms that spaCy can extract as noun chunks.
     """
-    doc = _get_spacy_nlp()(note)
+    doc = _get_spacy_nlp()(_expand_abbreviations(note))
     seen: set[str] = set()
     queries: list[str] = []
     for ent in doc.ents:
@@ -226,13 +263,74 @@ _QUERY_SYNONYMS: dict[str, list[str]] = {
     "hypertension": ["essential hypertension"],
     "diabetes": ["diabetes mellitus"],
     "heart failure": ["heart failure", "cardiac failure"],
-    "copd": ["chronic obstructive pulmonary disease"],
+    # Bare "copd" gets the generic phrase AND the unspecified description so
+    # J44.9 always enters the candidate set. Without the second term, J44.89
+    # ("other chronic obstructive pulmonary disease") crowds out J44.9 in both
+    # BM25 and dense because its description is a strict superset of tokens.
+    "copd": [
+        "chronic obstructive pulmonary disease",
+        "chronic obstructive pulmonary disease, unspecified",
+    ],
+    # spaCy splits "acute exacerbation of COPD" into the chunk "acute
+    # exacerbation" + the entity "COPD". The chunk alone must resolve to the
+    # J44.1 description so the reranker sees it alongside J44.9 and can pick
+    # the right one based on the full note context.
+    "acute exacerbation": [
+        "chronic obstructive pulmonary disease with (acute) exacerbation",
+    ],
+    # Stable-COPD noun chunks extracted from notes like "stable COPD, GOLD B"
+    # or "quarterly COPD follow-up". Both map to J44.9 (unspecified = stable).
+    "stable copd": [
+        "chronic obstructive pulmonary disease, unspecified",
+    ],
+    "quarterly copd follow-up": [
+        "chronic obstructive pulmonary disease, unspecified",
+    ],
+    "copd follow-up": [
+        "chronic obstructive pulmonary disease, unspecified",
+    ],
     "afib": ["atrial fibrillation"],
     "ckd": ["chronic kidney disease"],
     "cad": ["coronary artery disease"],
     "dvt": ["deep vein thrombosis"],
     "pe": ["pulmonary embolism"],
     "uti": ["urinary tract infection"],
+    # Ejection fraction (after "EF" abbreviation expansion) → heart failure
+    # codes. Without this, "ejection fraction 45 %" produces no useful BM25
+    # match because the numeric token dominates and ICD descriptions say
+    # "reduced ejection fraction" not "ejection fraction 45".
+    "ejection fraction": [
+        "heart failure",
+        "systolic heart failure",
+        "diastolic heart failure",
+    ],
+    # Breast cancer: emit both the active-malignancy description and the
+    # personal-history-of description so Z85.3 enters the candidate set for
+    # surveillance visits where the cancer is no longer active.
+    "breast cancer": [
+        "malignant neoplasm of breast",
+        "personal history of malignant neoplasm of breast",
+    ],
+    "left breast cancer": [
+        "malignant neoplasm of breast",
+        "personal history of malignant neoplasm of breast",
+    ],
+    # Cancer surveillance / post-treatment follow-up encounter codes (Z08/Z09).
+    # Plain "surveillance" and "annual surveillance" retrieve contraceptive
+    # surveillance codes (Z30.4x) at rank 1 — these synonyms override that.
+    "oncology surveillance": [
+        "encounter for follow-up examination after completed treatment for malignant neoplasm",
+    ],
+    "annual oncology surveillance visit": [
+        "encounter for follow-up examination after completed treatment for malignant neoplasm",
+    ],
+    "annual surveillance": [
+        "encounter for follow-up examination after completed treatment for malignant neoplasm",
+    ],
+    "cancer surveillance": [
+        "encounter for follow-up examination after completed treatment for malignant neoplasm",
+        "personal history of malignant neoplasm",
+    ],
 }
 
 
