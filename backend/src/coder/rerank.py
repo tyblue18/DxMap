@@ -41,6 +41,12 @@ Rules you MUST follow:
 3. Self-report your confidence as a number between 0 and 1. Use 0.9+ only when the documentation is unambiguous. Use <0.5 when you are uncertain or when human review would be appropriate.
 4. If a candidate code is NOT supported, omit it from your output entirely.
 5. Do not invent codes. Only return codes from the candidate list.
+6. When multiple candidates represent the same condition at different specificity levels, always choose the MOST SPECIFIC code the documentation supports. Key examples:
+   - CKD stage: use N18.31–N18.5 when the provider documents a stage; N18.9 (unspecified) only when no stage is given.
+   - MDD severity: PHQ-9 5–9 = mild (F32.0/F33.0), 10–14 = moderate (F32.1/F33.1), 15–27 = severe without psychosis (F32.2/F33.2). Use the severity-specific code when a PHQ-9 score is documented.
+   - Anemia etiology: D63.1 (anemia in CKD) over D64.9 (unspecified) when CKD is the documented cause; D63.8 when another chronic disease is the cause.
+   - Hyperparathyroidism: N25.81 (secondary hyperparathyroidism of renal origin) when CKD causes elevated PTH. E21.1 (secondary hyperparathyroidism, NEC) is reserved for non-renal causes only.
+   - Laterality: always prefer the side-specific code (e.g. M17.12 left knee, M17.11 right knee) over the unspecified code (M17.10) when the note names the affected side.
 
 Output a single JSON object with key "suggestions" containing an array. Each entry must have:
   - code: string (exactly as in the candidate list)

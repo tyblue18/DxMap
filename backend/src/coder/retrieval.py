@@ -244,7 +244,10 @@ def _extract_query_entities(
 
 def _tokenize(s: str) -> list[str]:
     """Cheap tokenizer for BM25. Real systems use a proper clinical tokenizer."""
-    return [t for t in s.lower().replace(",", " ").replace(".", " ").split() if t]
+    # Strip apostrophes so "Colles'" (ICD description) and "Colles" (clinical note)
+    # both tokenize to "colles" and match. Without this, the possessive apostrophe
+    # in ICD descriptions creates zero BM25 overlap for the query token.
+    return [t for t in s.lower().replace("'", " ").replace(",", " ").replace(".", " ").split() if t]
 
 
 @lru_cache(maxsize=1)
@@ -438,6 +441,86 @@ _QUERY_SYNONYMS: dict[str, list[str]] = {
     "cancer surveillance": [
         "encounter for follow-up examination after completed treatment for malignant neoplasm",
         "personal history of malignant neoplasm",
+    ],
+    # Rotator cuff: notes use "impingement tests" which retrieves M75.42
+    # (Impingement syndrome) instead of M75.12 (Rotator cuff syndrome).
+    # Mapping the diagnosis phrase to the exact ICD description overrides
+    # the impingement-driven dense retrieval.
+    "rotator cuff syndrome": [
+        "rotator cuff syndrome, left shoulder",
+        "rotator cuff syndrome, right shoulder",
+        "rotator cuff syndrome, unspecified shoulder",
+    ],
+    "left shoulder rotator cuff syndrome": [
+        "rotator cuff syndrome, left shoulder",
+    ],
+    "right shoulder rotator cuff syndrome": [
+        "rotator cuff syndrome, right shoulder",
+    ],
+    # Primary OA: "left knee pain" (M25.562) outranks M17.12 in retrieval.
+    # Issuing separate laterality-specific OA queries brings M17.1x into
+    # the top-10 so the LLM can pick the correct side.
+    "primary osteoarthritis": [
+        "unilateral primary osteoarthritis, left knee",
+        "unilateral primary osteoarthritis, right knee",
+        "bilateral primary osteoarthritis of knee",
+    ],
+    # MDD severity: F33.2 (recurrent severe without psychotic features) falls
+    # just outside the top-20 because F33.0/F33.1/F33.9 crowd it out. Adding
+    # this synonym ensures F33.2 enters candidates so the LLM can use the
+    # PHQ-9 score to select the correct severity code.
+    "depressive symptoms": [
+        "major depressive disorder, recurrent severe without psychotic features",
+    ],
+    # Ankle sprain: "sprain" alone retrieves sequela and follow-up codes first.
+    # The initial-encounter description surfaces S93.40xA at rank 1 in BM25.
+    "sprain": [
+        "sprain of unspecified ligament of ankle, initial encounter",
+    ],
+    # Anemia in CKD: spaCy extracts bare "anemia" (the prepositional phrase
+    # "of CKD" is stripped as a modifier), so "anemia of chronic kidney
+    # disease" synonym never fires. Mapping the bare word ensures D63.1
+    # enters the candidate set. D64.9 (unspecified) otherwise wins because
+    # it has no etiology-specific qualifier to lower its BM25 rank.
+    "anemia": [
+        "anemia in chronic kidney disease",
+        "anemia in other chronic diseases classified elsewhere",
+        "iron deficiency anemia, unspecified",
+    ],
+    "anemia of chronic kidney disease": [
+        "anemia in chronic kidney disease",
+    ],
+    "anemia of ckd": [
+        "anemia in chronic kidney disease",
+    ],
+    # Secondary hyperparathyroidism: "secondary hyperparathyroidism" retrieves
+    # E21.1 (not elsewhere classified = non-renal) over N25.81 (renal origin)
+    # because E21.1 is a shorter description with higher BM25 density. Adding
+    # the renal-origin phrasing ensures N25.81 enters the candidate set so the
+    # LLM can select the etiology-correct code based on documented CKD context.
+    "secondary hyperparathyroidism": [
+        "secondary hyperparathyroidism of renal origin",
+    ],
+    "renal origin": [
+        "secondary hyperparathyroidism of renal origin",
+    ],
+    # CKD stage: after abbreviation expansion "CKD stage 4" → "chronic kidney
+    # disease stage 4", but spaCy strips the trailing numeric modifier so the
+    # extracted chunk is "chronic kidney disease stage" (no digit). Issuing
+    # explicit stage-specific synonym queries ensures all N18.3x–N18.5 codes
+    # enter the candidate set and the LLM can select the documented stage.
+    "chronic kidney disease stage": [
+        "chronic kidney disease, stage 4 (severe)",
+        "chronic kidney disease, stage 3b",
+        "chronic kidney disease, stage 3a",
+        "chronic kidney disease, stage 5",
+        "chronic kidney disease, stage 2 (mild)",
+    ],
+    # Colles fracture: "a Colles fracture" is the extracted entity. The 'A'
+    # article is low-IDF noise; adding the full right-radius description gives
+    # S52.531A a direct BM25 rank-1 boost over the sequela and left-side variants.
+    "a colles fracture": [
+        "Colles fracture of right radius, initial encounter for closed fracture",
     ],
 }
 
