@@ -23,14 +23,20 @@ def run(request: CodingRequest) -> CodingResponse:
     negated = find_negated_spans(request.note)
 
     # Stage 2 + 3: hybrid retrieval, then LLM rerank with span attribution.
-    icd_candidates = retrieve_decomposed(request.note, code_system="ICD-10-CM")
+    # negated spans are passed to retrieval so NegEx-detected entities are
+    # excluded from queries in addition to the prefix-based filter.
+    icd_candidates = retrieve_decomposed(
+        request.note, code_system="ICD-10-CM", negated_spans=negated
+    )
     icd_suggestions = rerank(
         request.note, icd_candidates, negated, code_system="ICD-10-CM"
     )
 
     cpt_suggestions: list[CodeSuggestion] = []
     if request.include_cpt:
-        cpt_candidates = retrieve_decomposed(request.note, code_system="CPT")
+        cpt_candidates = retrieve_decomposed(
+            request.note, code_system="CPT", negated_spans=negated
+        )
         cpt_suggestions = rerank(
             request.note, cpt_candidates, negated, code_system="CPT"
         )

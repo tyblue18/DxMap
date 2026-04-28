@@ -31,7 +31,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 from rank_bm25 import BM25Okapi
 
-from .schema import CodeCandidate
+from .schema import CodeCandidate, TextSpan
 
 _CHROMA_DIR = Path(__file__).resolve().parents[2] / ".chroma"
 _BM25_CACHE: dict[str, tuple[BM25Okapi, list[dict]]] = {}
@@ -104,12 +104,38 @@ def _expand_abbreviations(text: str) -> str:
     return text
 
 
+# Noun-chunk prefixes that indicate the chunk describes a negated or absent
+# finding. NegEx catches named entities; this catches the broader class of
+# "No X" / "negative X" noun chunks that NegEx misses because en_core_web_sm
+# does not recognise clinical terms as named entities.
+# These chunks MUST NOT be used as retrieval queries — querying "no ST-segment
+# elevation" returns ST-elevation codes at rank 1, which then crowd out the
+# true diagnosis in both BM25 and dense retrieval.
+_NEGATION_PREFIXES: tuple[str, ...] = (
+    "no ",
+    "not ",
+    "without ",
+    "negative ",
+    "denies ",
+    "ruled out ",
+    "no evidence ",
+    "absence of ",
+    "no history ",
+    "no prior ",
+    "no family ",
+)
+
+
 def _is_useful_query(text: str) -> bool:
     """Return False for strings that produce only noise as retrieval queries."""
     if len(text) < 4:
         return False
     lower = text.lower().strip()
     if lower in _ADMIN_BLOCKLIST:
+        return False
+    # Drop negated phrases — querying them retrieves codes for the negated
+    # condition, which then crowd out the actual confirmed diagnosis.
+    if any(lower.startswith(p) for p in _NEGATION_PREFIXES):
         return False
     tokens = text.split()
     # Single-token lab abbreviations: "HbA1c", "eGFR" — letters + digit + letters
@@ -125,7 +151,60 @@ def _is_useful_query(text: str) -> bool:
     return False
 
 
-def _extract_query_entities(note: str) -> list[str]:
+# Negation cue words used for the context-window check in _entity_is_negated.
+# This catches sub-chunks of negated phrases that the prefix filter misses —
+# e.g. spaCy splits "no family history of sudden cardiac death" into the chunk
+# "no family history" (filtered by prefix) AND "sudden cardiac death" (NOT
+# filtered by prefix, but clearly negated by the cue word "no" that precedes
+# it in the same clause).
+_NEGATION_CONTEXT_RE = re.compile(
+    r"\b(no|not|without|negative|denies|absent|ruled\s+out|no\s+evidence\s+of)\b",
+    re.I,
+)
+
+
+def _entity_is_negated(
+    entity_text: str,
+    original_note: str,
+    negated_spans: list[TextSpan],
+) -> bool:
+    """Return True if entity_text appears in a negated context in the original note.
+
+    Two checks, applied in order:
+
+    1. NegEx span overlap — catches named entities NegEx flagged (sparse coverage
+       with en_core_web_sm, but zero false-positive rate).
+
+    2. Context-window check — looks at the 70 characters before entity_text's
+       first occurrence (trimmed to the current clause), and returns True if a
+       negation cue word is present. This catches sub-chunks of negated phrases
+       that the prefix filter in _is_useful_query cannot see because spaCy
+       extracts them as independent noun chunks.
+    """
+    idx = original_note.lower().find(entity_text.lower())
+    if idx < 0:
+        return False
+    end = idx + len(entity_text)
+
+    # 1. NegEx span overlap
+    if any(not (end <= ns.start or idx >= ns.end) for ns in negated_spans):
+        return True
+
+    # 2. Context-window: look at the text in the same clause before this entity
+    context_start = max(0, idx - 70)
+    context = original_note[context_start:idx]
+    # Trim to current clause — don't look across sentence/clause boundaries
+    for sep in (".", ";", ":"):
+        last = context.rfind(sep)
+        if last >= 0:
+            context = context[last + 1:]
+    return bool(_NEGATION_CONTEXT_RE.search(context))
+
+
+def _extract_query_entities(
+    note: str,
+    negated_spans: list[TextSpan] | None = None,
+) -> list[str]:
     """Return per-entity query strings extracted from note via spaCy NER and noun chunks.
 
     Running one retrieve() call per entity prevents a dominant condition from
@@ -136,6 +215,12 @@ def _extract_query_entities(note: str) -> list[str]:
     The note is abbreviation-expanded before NLP so that tokens like "MI" and
     "EF" (dropped by the len < 4 guard or the numeric filter) become full
     clinical terms that spaCy can extract as noun chunks.
+
+    Two layers of negation filtering keep ruled-out conditions out of retrieval:
+      1. Prefix filter (_is_useful_query): drops any chunk starting with "no ",
+         "negative ", etc. — catches the broad "No X" patterns NegEx misses.
+      2. NegEx span filter: drops entities whose position in the original note
+         overlaps a span flagged by the NegEx pipeline (secondary, sparser).
     """
     doc = _get_spacy_nlp()(_expand_abbreviations(note))
     seen: set[str] = set()
@@ -143,11 +228,15 @@ def _extract_query_entities(note: str) -> list[str]:
     for ent in doc.ents:
         t = ent.text.strip()
         if _is_useful_query(t) and t.lower() not in seen:
+            if negated_spans and _entity_is_negated(t, note, negated_spans):
+                continue
             seen.add(t.lower())
             queries.append(t)
     for chunk in doc.noun_chunks:
         t = chunk.text.strip()
         if _is_useful_query(t) and t.lower() not in seen:
+            if negated_spans and _entity_is_negated(t, note, negated_spans):
+                continue
             seen.add(t.lower())
             queries.append(t)
     return queries
@@ -304,6 +393,25 @@ _QUERY_SYNONYMS: dict[str, list[str]] = {
         "systolic heart failure",
         "diastolic heart failure",
     ],
+    # Terminology mismatches where the clinical term used in notes does not
+    # appear in the ICD-10 description, so BM25 finds zero token overlap.
+    # Dense retrieval alone is insufficient when other queries (SAH, LP, ACS)
+    # produce higher-scoring candidates.
+    #
+    # "costochondritis" → ICD M94.0 is "Chondrocostal junction syndrome [Tietze]"
+    "costochondritis": ["chondrocostal junction syndrome"],
+    # "migraines" (plural) → ICD descriptions use singular "migraine".
+    # All G43.9x codes tie on ["migraine", "unspecified"] in BM25, so the
+    # full description string is used to uniquely pin G43.909 (not intractable,
+    # without status migrainosus) to rank 1 and push G43.911/G43.919 down.
+    "migraines": [
+        "migraine, unspecified, not intractable, without status migrainosus",
+    ],
+    "prior severe migraines": [
+        "migraine, unspecified, not intractable, without status migrainosus",
+    ],
+    # "vasovagal syncope" → ICD R55 is "Syncope and collapse" (zero token overlap)
+    "vasovagal syncope": ["syncope and collapse"],
     # Breast cancer: emit both the active-malignancy description and the
     # personal-history-of description so Z85.3 enters the candidate set for
     # surveillance visits where the cancer is no longer active.
@@ -340,6 +448,7 @@ def retrieve_decomposed(
     top_k_bm25: int = 30,
     top_k_dense: int = 30,
     final_k: int = 20,
+    negated_spans: list[TextSpan] | None = None,
 ) -> list[CodeCandidate]:
     """Hybrid retrieval with per-entity query decomposition.
 
@@ -351,8 +460,12 @@ def retrieve_decomposed(
 
     Each extracted entity is also expanded through _QUERY_SYNONYMS to bridge
     gaps between clinical shorthand and ICD-preferred terminology.
+
+    negated_spans: NegEx-detected negated entity spans from the pipeline. Passed
+    to _extract_query_entities so NegEx-flagged entities are excluded as queries
+    in addition to the prefix-based filter that handles the broader "No X" class.
     """
-    entities = _extract_query_entities(note)
+    entities = _extract_query_entities(note, negated_spans=negated_spans)
     expanded: list[str] = []
     seen: set[str] = set()
     for e in entities:
