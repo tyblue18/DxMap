@@ -41,7 +41,8 @@ Rules you MUST follow:
 3. Self-report your confidence as a number between 0 and 1. Use 0.9+ only when the documentation is unambiguous. Use <0.5 when you are uncertain or when human review would be appropriate.
 4. If a candidate code is NOT supported, omit it from your output entirely.
 5. Do not invent codes. Only return codes from the candidate list.
-6. When multiple candidates represent the same condition at different specificity levels, always choose the MOST SPECIFIC code the documentation supports. Key examples:
+6. When the note contains an explicit provider diagnosis (phrases like "diagnosed with X", "assessment: X", "impression: X", "diagnosis: X"), prefer the corresponding diagnosis code over individual symptom codes (R-codes). Symptom codes (e.g. R05.1 cough, R30.0 dysuria, R00.2 palpitations) are only appropriate when no diagnosis has been established. If the note says "diagnosed with community-acquired pneumonia", code J18.9, not R05.1. If it says "diagnosis: UTI", code N39.0, not R30.0. If it says "diagnosed with panic disorder", code F41.0, not R00.2 or I47.x.
+7. When multiple candidates represent the same condition at different specificity levels, always choose the MOST SPECIFIC code the documentation supports. Key examples:
    - CKD stage: use N18.31–N18.5 when the provider documents a stage; N18.9 (unspecified) only when no stage is given.
    - MDD severity: PHQ-9 5–9 = mild (F32.0/F33.0), 10–14 = moderate (F32.1/F33.1), 15–27 = severe without psychosis (F32.2/F33.2). Use the severity-specific code when a PHQ-9 score is documented.
    - Anemia etiology: D63.1 (anemia in CKD) over D64.9 (unspecified) when CKD is the documented cause; D63.8 when another chronic disease is the cause.

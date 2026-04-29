@@ -522,6 +522,74 @@ _QUERY_SYNONYMS: dict[str, list[str]] = {
     "a colles fracture": [
         "Colles fracture of right radius, initial encounter for closed fracture",
     ],
+    # Radiculopathy: M54.41 is "Lumbago with sciatica, right side" in the ICD
+    # corpus — not "radiculopathy". The synonym must target the ICD description
+    # text, not the clinical synonym. M54.16 ("Radiculopathy, lumbar region")
+    # otherwise wins because it shares the word "radiculopathy" with the note.
+    "radiculopathy": [
+        "lumbago with sciatica, right side",
+        "lumbago with sciatica, left side",
+        "radiculopathy, lumbar region",
+    ],
+    "right-sided lumbar radiculopathy": [
+        "lumbago with sciatica, right side",
+    ],
+    "lumbar radiculopathy": [
+        "lumbago with sciatica, right side",
+    ],
+    # Pneumonia: "pneumonia" retrieves symptom codes (R05.x, R07.x) at high
+    # rank via dense embedding; the full ICD phrase pins J18.9 to rank 1.
+    "pneumonia": [
+        "pneumonia, unspecified organism",
+        "community-acquired pneumonia",
+    ],
+    "community-acquired pneumonia": [
+        "pneumonia, unspecified organism",
+    ],
+    # Diabetic neuropathy: E11.40 (T2DM with diabetic neuropathy, unspecified)
+    # is the ICD combination code; querying the bare term retrieves G62.9
+    # (polyneuropathy unspecified) instead.
+    "diabetic neuropathy": [
+        "type 2 diabetes mellitus with diabetic neuropathy, unspecified",
+    ],
+    "peripheral polyneuropathy": [
+        "type 2 diabetes mellitus with diabetic neuropathy, unspecified",
+    ],
+    # Atherosclerosis / CAD: I25.42 (chronic coronary syndrome) dominates over
+    # I25.10 (atherosclerotic heart disease of native coronary artery without
+    # angina pectoris) when the note mentions catheterisation-confirmed CAD.
+    "atherosclerosis": [
+        "atherosclerotic heart disease of native coronary artery without angina pectoris",
+    ],
+    "coronary artery disease": [
+        "atherosclerotic heart disease of native coronary artery without angina pectoris",
+    ],
+    # Alcoholic cirrhosis: spaCy extracts bare "cirrhosis" (not "alcoholic
+    # cirrhosis") because "alcoholic" is an adjective modifier excluded from
+    # most noun-chunk heads. K76.6 (portal hypertension) otherwise dominates
+    # because it shares tokens with the surrounding note context.
+    "cirrhosis": [
+        "alcoholic cirrhosis of liver without ascites",
+        "alcoholic cirrhosis of liver with ascites",
+    ],
+    "alcoholic cirrhosis": [
+        "alcoholic cirrhosis of liver without ascites",
+        "alcoholic cirrhosis of liver with ascites",
+    ],
+    # Secondary thrombocytopenia: the note describes low platelets via
+    # "hypersplenism from portal hypertension" — the word "thrombocytopenia"
+    # never appears. Mapping "hypersplenism" surfaces D69.59 (other secondary
+    # thrombocytopenia) which is the precise code for that mechanism.
+    "hypersplenism": [
+        "other secondary thrombocytopenia",
+    ],
+    "thrombocytopenia": [
+        "other secondary thrombocytopenia",
+        "secondary thrombocytopenia, unspecified",
+    ],
+    "secondary thrombocytopenia": [
+        "other secondary thrombocytopenia",
+    ],
 }
 
 
