@@ -61,14 +61,21 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-paper">
       <header className="border-b border-ink/10 bg-paper-raised">
-        <div className="mx-auto max-w-6xl px-6 py-5 flex items-baseline justify-between">
-          <div>
-            <h1 className="font-serif text-2xl text-ink tracking-tight">
-              DxMap
-            </h1>
-            <p className="text-xs text-ink-muted mt-0.5 font-mono">
-              ICD-10-CM &middot; CPT &middot; Span attribution &middot; Calibrated confidence
-            </p>
+        <div className="mx-auto max-w-6xl px-6 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img
+              src="/DxMap.png"
+              alt="DxMap logo"
+              className="h-9 w-auto"
+            />
+            <div>
+              <h1 className="font-serif text-2xl text-ink tracking-tight">
+                DxMap
+              </h1>
+              <p className="text-xs text-ink-muted mt-0.5 font-mono">
+                ICD-10-CM &middot; CPT &middot; Span attribution &middot; Calibrated confidence
+              </p>
+            </div>
           </div>
           <a
             href="https://github.com/tyblue18/clinical-coder"

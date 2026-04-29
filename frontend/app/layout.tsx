@@ -4,6 +4,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "DxMap",
   description: "ICD-10-CM and CPT code suggestions with span attribution",
+  icons: {
+    icon: "/DxMap.png",
+    apple: "/DxMap.png",
+  },
 };
 
 export default function RootLayout({
