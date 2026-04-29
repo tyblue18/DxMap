@@ -6,7 +6,7 @@
 
     ## Why I built this
 
-    Medical coding is the process of translating a doctor's notes into standardized codes that insurance companies use for billing. It's done by human coders who read notes all day, look up the right codes in a 90,000-entry codebook, and try not to make mistakes that get claims rejected. It's slow, expensive, and error-prone — and there's a real shortage of coders.
+    Medical coding is the process of translating a doctor's notes into standardized codes that insurance companies use for billing. It's done by human coders who read notes all day, look up the right codes in a 90,000-entry codebook, and try not to make mistakes that get claims rejected. It's slow, expensive, error-prone, and there's a real shortage of coders.
 
     I wanted a portfolio project that combined NLP and a genuine operational problem, and medical coding checked both boxes. It's also technically interesting because the hard parts aren't what you'd expect: the retrieval is actually the tricky bit, not the LLM.
 
