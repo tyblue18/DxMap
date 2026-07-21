@@ -23,7 +23,15 @@ import logging
 import os
 import time
 import traceback
+from pathlib import Path
 from typing import Any
+
+from dotenv import load_dotenv
+
+# Load backend/.env so API keys work no matter how the process is started
+# (uvicorn, the eval harness, or tests). Real environment variables win over
+# values from the file.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 logger = logging.getLogger(__name__)
 

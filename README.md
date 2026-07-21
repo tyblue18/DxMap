@@ -127,7 +127,7 @@ pnpm install
 pnpm dev
 ```
 
-The UI runs at `http://localhost:3000` and expects the API at `http://localhost:8000`. Change `NEXT_PUBLIC_API_BASE` in `frontend/.env` if you're running the backend elsewhere.
+The UI runs at `http://localhost:3000`. Note that the frontend (including the deployed demo) is a static replay of saved eval cases from the pipeline — it does not call the backend or run live inference, so it works without the API running.
 
 ### Eval
 

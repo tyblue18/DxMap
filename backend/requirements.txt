@@ -13,6 +13,9 @@ spacy>=3.7.0
 negspacy>=1.0.4
 # After install, run: python -m spacy download en_core_web_sm
 
+# Config
+python-dotenv>=1.0.0
+
 # LLM clients (use whichever you have a key for)
 openai>=1.12.0
 anthropic>=0.18.0
