@@ -216,11 +216,23 @@ def _extract_query_entities(
     "EF" (dropped by the len < 4 guard or the numeric filter) become full
     clinical terms that spaCy can extract as noun chunks.
 
-    Two layers of negation filtering keep ruled-out conditions out of retrieval:
+    Three layers of negation filtering keep ruled-out conditions out of retrieval:
       1. Prefix filter (_is_useful_query): drops any chunk starting with "no ",
          "negative ", etc. — catches the broad "No X" patterns NegEx misses.
-      2. NegEx span filter: drops entities whose position in the original note
-         overlaps a span flagged by the NegEx pipeline (secondary, sparser).
+      2. Context-window check (_entity_is_negated): drops chunks preceded by a
+         negation cue in the same clause. This is the layer that carries the
+         load, because spaCy emits negated sub-chunks with no cue of their own
+         ("sudden cardiac death" out of "no family history of sudden cardiac
+         death") which layer 1 structurally cannot see.
+      3. NegEx span filter (also _entity_is_negated): drops entities overlapping
+         a NegEx-flagged span. Near-zero coverage in practice — en_core_web_sm
+         recognises almost no clinical terms as named entities, so NegEx returns
+         an empty list for most real notes. Kept because it costs nothing and
+         becomes useful the moment a clinical NER model (scispaCy) is swapped in.
+
+    Layers 2 and 3 must run even when negated_spans is empty: gating them on a
+    non-empty NegEx result disables the context-window check on exactly the
+    notes it exists to handle.
     """
     doc = _get_spacy_nlp()(_expand_abbreviations(note))
     seen: set[str] = set()
@@ -228,14 +240,14 @@ def _extract_query_entities(
     for ent in doc.ents:
         t = ent.text.strip()
         if _is_useful_query(t) and t.lower() not in seen:
-            if negated_spans and _entity_is_negated(t, note, negated_spans):
+            if _entity_is_negated(t, note, negated_spans or []):
                 continue
             seen.add(t.lower())
             queries.append(t)
     for chunk in doc.noun_chunks:
         t = chunk.text.strip()
         if _is_useful_query(t) and t.lower() not in seen:
-            if negated_spans and _entity_is_negated(t, note, negated_spans):
+            if _entity_is_negated(t, note, negated_spans or []):
                 continue
             seen.add(t.lower())
             queries.append(t)

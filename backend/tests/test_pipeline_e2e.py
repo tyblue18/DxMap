@@ -47,7 +47,7 @@ def test_pipeline_returns_response(fake_candidates, fake_llm_response):
     note = "Patient has known type 2 diabetes managed with metformin."
 
     with (
-        patch("src.coder.pipeline.retrieve", return_value=fake_candidates),
+        patch("src.coder.pipeline.retrieve_decomposed", return_value=fake_candidates),
         patch("src.coder.rerank._call_llm", return_value=fake_llm_response),
     ):
         response = run(CodingRequest(note=note, include_cpt=False))
@@ -73,7 +73,7 @@ def test_pipeline_drops_hallucinated_codes(fake_candidates):
     }
 
     with (
-        patch("src.coder.pipeline.retrieve", return_value=fake_candidates),
+        patch("src.coder.pipeline.retrieve_decomposed", return_value=fake_candidates),
         patch("src.coder.rerank._call_llm", return_value=bad_response),
     ):
         response = run(CodingRequest(note="Some note text here.", include_cpt=False))
@@ -86,7 +86,7 @@ def test_pipeline_handles_llm_failure(fake_candidates):
     from src.coder.pipeline import run
 
     with (
-        patch("src.coder.pipeline.retrieve", return_value=fake_candidates),
+        patch("src.coder.pipeline.retrieve_decomposed", return_value=fake_candidates),
         patch("src.coder.rerank._call_llm", side_effect=RuntimeError("API down")),
     ):
         response = run(CodingRequest(note="Some clinical note text.", include_cpt=False))

@@ -31,4 +31,5 @@ eval/results/
 .env
 
 # Claude rules
-.claude/
+.claude/frontend/tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfo

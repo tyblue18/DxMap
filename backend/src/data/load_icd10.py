@@ -29,8 +29,10 @@ def load_icd10_codes() -> list[dict[str, str]]:
     """Return a list of {code, description} dicts."""
     if not ICD10_FILE.exists():
         raise FileNotFoundError(
-            f"{ICD10_FILE} not found. See scripts/fetch_icd10.sh and the README "
-            "Quickstart section."
+            f"{ICD10_FILE} not found. Download the 'ICD-10-CM Code Descriptions in "
+            "Tabular Order' zip from https://www.cms.gov/medicare/coding-billing/icd-10-codes, "
+            f"then copy icd10cm_codes_YYYY.txt to {ICD10_FILE}. See the Setup "
+            "section of the README."
         )
 
     codes: list[dict[str, str]] = []

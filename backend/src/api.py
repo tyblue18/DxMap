@@ -33,10 +33,13 @@ def code(request: CodingRequest) -> CodingResponse:
     try:
         return run(request)
     except FileNotFoundError as exc:
-        # Most likely cause: indices weren't built.
+        # Most likely cause: indices weren't built, or the ICD-10-CM source file
+        # was never downloaded. Both raisers (_load_bm25, load_icd10_codes) already
+        # carry their own remediation step, so pass the message through verbatim
+        # rather than appending a second, possibly wrong, instruction.
         raise HTTPException(
             status_code=503,
-            detail=f"Pipeline not initialized: {exc}. Run `python -m src.data.build_indices`.",
+            detail=f"Pipeline not initialized. {exc}",
         ) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Pipeline error: {type(exc).__name__}: {exc}") from exc
